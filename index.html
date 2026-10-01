@@ -35,6 +35,9 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .cs{width:30px;height:30px;border-radius:50%;border:1px solid var(--bd);cursor:pointer;padding:0}
 .cs.sel{outline:3px solid var(--ac);outline-offset:2px}
 .mh td{background:var(--bg);font-weight:600;padding-top:14px}
+details{background:var(--card);border:1px solid var(--bd);border-radius:6px;margin-bottom:10px}
+summary{cursor:pointer;padding:12px 14px;display:flex;gap:16px;flex-wrap:wrap;align-items:baseline}
+details>div{padding:0 14px 12px;overflow-x:auto}
 .sws{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
 .sw{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid var(--bd);vertical-align:-1px;margin-right:6px}
 </style></head><body>
@@ -53,10 +56,10 @@ const auth=getAuth(app),db=getFirestore(app);
 const COLS=["expenses","movements","txns","filaments","colors"];
 const S={expenses:[],movements:[],txns:[],filaments:[],colors:[]};
 const DEF=[["Siyah","#1a1a1a"],["Beyaz","#f2f2f2"],["Gri","#8a8d91"],["Kırmızı","#d32f2f"],["Turuncu","#f57c00"],["Sarı","#fbc02d"],["Yeşil","#2e9e4f"],["Mavi","#1e66d0"],["Lacivert","#16306b"],["Mor","#7b3fa0"],["Pembe","#e86fa5"],["Kahverengi","#6d4c3d"],["Şeffaf","#cfe8ef"],["Altın","#c9a227"]].map(([name,hex])=>({name,hex}));
-let selC=null;
+let selC=null;const monthOpen={};
 const lib=()=>[...DEF,...S.colors];
 let tab="kasa",month=new Date().toISOString().slice(0,7),started=false;
-const TABS={kasa:"Kasa",exp:"Harcamalar",txn:"Aylık gelir/gider",fil:"Filament",set:"Ayarlar",bak:"Yedek"};
+const TABS={kasa:"Kasa",exp:"Gelir / Gider",fil:"Filament",set:"Ayarlar",bak:"Yedek"};
 const $=s=>document.querySelector(s),today=()=>new Date().toISOString().slice(0,10);
 const fmt=n=>new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY"}).format(n||0);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -79,7 +82,7 @@ const pending=()=>S.expenses.reduce((a,e)=>a+P.reduce((b,p)=>b+(e.shares?.[p]&&!
 
 function render(){
   $("#nav").innerHTML=Object.entries(TABS).map(([k,v])=>`<button class="${k===tab?"on":""}" data-a="tab" data-k="${k}">${v}</button>`).join("");
-  $("#main").innerHTML={kasa:vKasa,exp:vExp,txn:vTxn,fil:vFil,set:vSet,bak:vBak}[tab]();
+  $("#main").innerHTML={kasa:vKasa,exp:vExp,fil:vFil,set:vSet,bak:vBak}[tab]();
 }
 
 function vKasa(){
@@ -95,36 +98,32 @@ function vKasa(){
 }
 
 function vExp(){
-  const ex=[...S.expenses].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
-  const avail=Math.max(0,balance()+pending());
-  const mn=m=>new Date(m+"-01").toLocaleDateString("tr-TR",{month:"long",year:"numeric"});
+  const mn=m=>m?new Date(m+"-01").toLocaleDateString("tr-TR",{month:"long",year:"numeric"}):"Tarihsiz";
+  const cm=today().slice(0,7);
   const pend=x=>P.reduce((b,p)=>b+(x.shares?.[p]&&!x.shares[p].paid?x.shares[p].amount:0),0);
-  let rows="",cur=null;
-  ex.forEach(e=>{const m=(e.date||"").slice(0,7);
-    if(m!==cur){cur=m;const l=ex.filter(x=>(x.date||"").slice(0,7)===m);
-      rows+=`<tr class="mh"><td colspan="8">${m?mn(m):"Tarihsiz"} · Toplam ${fmt(l.reduce((a,x)=>a+x.total,0))} · Bekleyen ortak payı ${fmt(l.reduce((a,x)=>a+pend(x),0))}</tr>`}
-    rows+=`<tr><td>${esc(e.date)}<td><b>${esc(e.institution)}</b><br><span class="mu">${esc(e.description)}</span><br>${e.receipt?`<a href="${esc(e.receipt)}" target="_blank" rel="noopener">Dekont</a> <button class="g" data-a="rcp" data-id="${e.id}">Değiştir</button>`:`<button class="g" data-a="rcp" data-id="${e.id}">+ Dekont ekle</button>`}
-    <td class="n">${fmt(e.total)}<td class="n">${fmt(e.fromKasa)}
+  const items=[...S.expenses.map(e=>({k:"e",d:e.date||"",e})),...S.txns.map(t=>({k:"t",d:t.date||"",t}))].map(i=>({...i,m:i.d.slice(0,7)})).sort((a,b)=>b.d.localeCompare(a.d));
+  const months=[...new Set([cm,...items.map(i=>i.m)])].sort().reverse();
+  const avail=Math.max(0,balance()+pending());
+  const row=i=>{
+    if(i.k==="t"){const t=i.t,inc=t.type==="income";
+      return `<tr><td>${esc(t.date)}<td><b>${esc(t.category)}</b><br><span class="mu">${esc(t.note)}</span><td class="n ${inc?"gr":"rd"}">${inc?"+":"−"}${fmt(t.amount)}<td class="n mu">—<td colspan="3" class="mu">${inc?"Gelir":"Gider"}<td><button class="g" data-a="delInc" data-id="${t.id}">Sil</button></tr>`}
+    const e=i.e;
+    return `<tr><td>${esc(e.date)}<td><b>${esc(e.institution)}</b><br><span class="mu">${esc(e.description)}</span><br>${e.receipt?`<a href="${esc(e.receipt)}" target="_blank" rel="noopener">Dekont</a> <button class="g" data-a="rcp" data-id="${e.id}">Değiştir</button>`:`<button class="g" data-a="rcp" data-id="${e.id}">+ Dekont ekle</button>`}
+    <td class="n rd">−${fmt(e.total)}<td class="n">${fmt(e.fromKasa)}
     ${P.map(p=>{const s=e.shares?.[p];return s&&s.amount>0?`<td><button class="chip ${s.paid?"ok":"no"}" data-a="pay" data-id="${e.id}" data-p="${p}">${s.paid?"Ödendi":"Bekliyor"}</button><br><span class="mu">${fmt(s.amount)}</span>`:'<td class="mu">—'}).join("")}
-    <td><button class="g" data-a="delExp" data-id="${e.id}">Sil</button></tr>`});
-  return `<div class="card"><h2>Yeni harcama</h2>
-  <div class="warn">Kasada kullanılabilir ${fmt(avail)} var. Tutar bundan fazlaysa eksik kısım 3 ortağa eşit bölünür.</div>
-  <div class="row"><label>Ödenen kurum<input id="ei"></label><label>Açıklama<input id="ed"></label>
+    <td><button class="g" data-a="delExp" data-id="${e.id}">Sil</button></tr>`};
+  const blocks=months.map(m=>{const l=items.filter(i=>i.m===m);
+    const inc=l.reduce((a,i)=>a+(i.k==="t"&&i.t.type==="income"?i.t.amount:0),0);
+    const exo=l.reduce((a,i)=>a+(i.k==="e"?i.e.total:i.t.type==="expense"?i.t.amount:0),0);
+    const pe=l.reduce((a,i)=>a+(i.k==="e"?pend(i.e):0),0);
+    return `<details data-m="${m}" ${monthOpen[m]??(m===cm)?"open":""}><summary><b>${mn(m)}</b><span>Gelir <b class="gr">${fmt(inc)}</b></span><span>Gider <b class="rd">${fmt(exo)}</b></span><span>Net <b>${fmt(inc-exo)}</b></span>${pe>0?`<span class="mu">Bekleyen ortak payı ${fmt(pe)}</span>`:""}</summary>
+    <div>${l.length?`<table><tr><th>Tarih<th>Kurum / açıklama<th class="n">Tutar<th class="n">Kasadan${P.map(p=>`<th>${p}`).join("")}<th></tr>${l.map(row).join("")}</table>`:'<p class="mu">Bu ay kayıt yok.</p>'}</div></details>`}).join("");
+  return `<div class="card"><h2>Yeni kayıt</h2>
+  <div class="warn">Gider girersen kasadan düşer; kasada kullanılabilir ${fmt(avail)} var, fazlası 3 ortağa eşit bölünür. Gelir kasaya eklenir.</div>
+  <div class="row"><label>Tür<select id="ek"><option value="exp">Gider</option><option value="inc">Gelir</option></select></label>
+  <label>Kurum / kaynak<input id="ei"></label><label>Açıklama<input id="ed"></label>
   <label>Tarih<input id="et" type="date" value="${today()}"></label><label>Tutar (TRY)<input id="ea" inputmode="decimal"></label>
-  <button class="b" data-a="addExp">Ekle</button></div></div>
-  <div class="card"><h2>Harcamalar</h2>${ex.length?`<div style="overflow-x:auto"><table><tr><th>Tarih<th>Kurum / açıklama<th class="n">Toplam<th class="n">Kasadan${P.map(p=>`<th>${p}`).join("")}<th></tr>${rows}</table></div>`:'<p class="mu">Henüz harcama yok.</p>'}</div>`;
-}
-
-function vTxn(){
-  const l=S.txns.filter(t=>(t.date||"").startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date));
-  const inc=l.filter(t=>t.type==="income").reduce((a,t)=>a+t.amount,0),exo=l.filter(t=>t.type==="expense").reduce((a,t)=>a+t.amount,0);
-  return `<div class="card"><h2>Yeni kayıt</h2><div class="row">
-  <label>Tür<select id="tt"><option value="income">Gelir</option><option value="expense">Gider</option></select></label>
-  <label>Tarih<input id="td" type="date" value="${today()}"></label><label>Kategori<input id="tc"></label>
-  <label>Tutar<input id="ta" inputmode="decimal"></label><label>Not<input id="tn"></label><button class="b" data-a="addTxn">Ekle</button></div></div>
-  <div class="card"><div class="row"><label>Ay<input type="month" id="tm" value="${month}"></label></div>
-  <p>Gelir <b class="gr">${fmt(inc)}</b> · Gider <b class="rd">${fmt(exo)}</b> · Net <b>${fmt(inc-exo)}</b></p>
-  ${l.length?`<table><tr><th>Tarih<th>Kategori / not<th class="n">Tutar<th></tr>${l.map(t=>`<tr><td>${esc(t.date)}<td>${esc(t.category)} <span class="mu">${esc(t.note)}</span><td class="n ${t.type==="income"?"gr":"rd"}">${t.type==="income"?"+":"−"}${fmt(t.amount)}<td><button class="g" data-a="del" data-c="txns" data-id="${t.id}">Sil</button></tr>`).join("")}</table>`:'<p class="mu">Bu ay için kayıt yok.</p>'}</div>`;
+  <button class="b" data-a="addExp">Ekle</button></div></div>${blocks}`;
 }
 
 function vFil(){
@@ -159,7 +158,7 @@ const A={
   tab:d=>{tab=d.k;render()},
   dep:async()=>{const a=num("da");if(a<=0)return alert("Tutar gir.");
     await addDoc(collection(db,"movements"),{date:today(),type:"in",amount:a,partner:val("dp"),note:val("dn")||"Kasaya yatırım"})},
-  addExp:async()=>{const T=num("ea"),inst=val("ei");if(T<=0||!inst)return alert("Kurum ve tutar gerekli.");
+  addExp:async()=>{if(val("ek")==="inc")return A.addInc();const T=num("ea"),inst=val("ei");if(T<=0||!inst)return alert("Kurum ve tutar gerekli.");
     const fromKasa=round(Math.min(Math.max(0,balance()+pending()),T)),each=round((T-fromKasa)/3),shares={};
     P.forEach(p=>shares[p]={amount:each,paid:each===0,paidDate:null,mid:null});
     const r=await addDoc(collection(db,"expenses"),{institution:inst,description:val("ed"),date:val("et")||today(),total:T,fromKasa,receipt:"",shares});
@@ -171,8 +170,12 @@ const A={
   delExp:async d=>{if(!confirm("Harcama ve bağlı kasa hareketleri silinsin mi?"))return;
     for(const m of S.movements.filter(m=>m.expenseId===d.id))await deleteDoc(doc(db,"movements",m.id));
     await deleteDoc(doc(db,"expenses",d.id))},
-  addTxn:async()=>{const a=num("ta");if(a<=0)return alert("Tutar gir.");
-    await addDoc(collection(db,"txns"),{type:val("tt"),date:val("td")||today(),category:val("tc"),amount:a,note:val("tn")})},
+  addInc:async()=>{const a=num("ea"),src=val("ei");if(a<=0||!src)return alert("Kaynak ve tutar gerekli.");
+    const dt=val("et")||today(),r=await addDoc(collection(db,"txns"),{type:"income",date:dt,category:src,note:val("ed")||"",amount:a});
+    await addDoc(collection(db,"movements"),{date:dt,type:"in",amount:a,txnId:r.id,note:"Gelir: "+src})},
+  delInc:async d=>{if(!confirm("Kayıt ve bağlı kasa hareketi silinsin mi?"))return;
+    for(const m of S.movements.filter(m=>m.txnId===d.id))await deleteDoc(doc(db,"movements",m.id));
+    await deleteDoc(doc(db,"txns",d.id))},
   selC:d=>{selC={name:d.n,hex:d.h};document.querySelectorAll(".cs").forEach(b=>b.classList.toggle("sel",b.dataset.n===d.n));$("#cn").textContent=d.n},
   addFil:async()=>{if(!selC)return alert("Önce bir renk seç.");
     await addDoc(collection(db,"filaments"),{color:selC.name,hex:selC.hex,material:val("fm"),brand:val("fb")||"",remaining:num("fg"),logs:[]})},
@@ -191,6 +194,7 @@ const A={
     a.download="qot-yedek-"+today()+".json";a.click()}
 };
 document.addEventListener("click",e=>{const t=e.target.closest("[data-a]");if(t&&A[t.dataset.a])A[t.dataset.a](t.dataset).catch(x=>alert("Hata: "+x.code||x))});
+document.addEventListener("toggle",e=>{const m=e.target.dataset?.m;if(m!==undefined)monthOpen[m]=e.target.open},true);
 document.addEventListener("change",async e=>{
   if(e.target.id==="tm"){month=e.target.value;render()}
   if(e.target.id==="imp"){const f=e.target.files[0];if(!f)return;
