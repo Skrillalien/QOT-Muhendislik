@@ -3,14 +3,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>QOT Muhasebe</title>
 <style>
-:root{--bg:#edf1f5;--card:#fff;--tx:#14202b;--mu:#5f6e7c;--bd:#d3dbe3;--ac:#1f5f8b;--rd:#b8362a;--gr:#1b7f46;--ye:#fff4d6}
-@media(prefers-color-scheme:dark){:root{--bg:#10171e;--card:#18222c;--tx:#e6edf3;--mu:#8fa0b0;--bd:#2b3946;--ac:#5aa9dd;--rd:#f0786a;--gr:#4cc47f;--ye:#3a3320}}
+:root,[data-theme=mavi]{--bg:#edf1f5;--card:#fff;--tx:#14202b;--mu:#5f6e7c;--bd:#d3dbe3;--ac:#1f5f8b;--rd:#b8362a;--gr:#1b7f46;--ye:#fff4d6}
+[data-theme=koyu]{--bg:#1e1f22;--card:#2a2b2f;--tx:#e8e8ea;--mu:#9a9aa0;--bd:#3f4045;--ac:#6ea8e0;--rd:#f0786a;--gr:#4cc47f;--ye:#3a3320}
+[data-theme=beyaz]{--bg:#fff;--card:#fff;--tx:#202124;--mu:#5f6368;--bd:#dadce0;--ac:#1a73e8;--rd:#d93025;--gr:#188038;--ye:#fef7e0}
 *{box-sizing:border-box}
 body{margin:0;font:15px/1.45 "Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--tx)}
 header{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-bottom:1px solid var(--bd);background:var(--card)}
 header b{font-size:17px}
 nav{display:flex;gap:4px;padding:8px 14px;overflow-x:auto;background:var(--card);border-bottom:1px solid var(--bd)}
-nav button{border:0;background:none;color:var(--mu);padding:8px 14px;font:inherit;cursor:pointer;border-bottom:3px solid transparent}
+nav button{display:flex;align-items:center;gap:6px;white-space:nowrap;border:0;background:none;color:var(--mu);padding:8px 14px;font:inherit;cursor:pointer;border-bottom:3px solid transparent}
 nav button.on{color:var(--tx);border-color:var(--ac);font-weight:600}
 main{max-width:980px;margin:0 auto;padding:18px 14px 60px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:14px;margin-bottom:14px}
@@ -36,11 +37,15 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .cs.sel{outline:3px solid var(--ac);outline-offset:2px}
 .mh td{background:var(--bg);font-weight:600;padding-top:14px}
 details{background:var(--card);border:1px solid var(--bd);border-radius:6px;margin-bottom:10px}
-summary{cursor:pointer;padding:12px 14px;display:flex;gap:16px;flex-wrap:wrap;align-items:baseline}
+summary{cursor:pointer;padding:12px 14px;display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"";width:8px;height:8px;border-right:2px solid var(--mu);border-bottom:2px solid var(--mu);transform:rotate(45deg);transition:transform .15s;align-self:center;margin:-3px 2px 0 0}
+details[open]>summary::before{transform:rotate(225deg);margin-top:3px}
+.ic{width:18px;height:18px}
 details>div{padding:0 14px 12px;overflow-x:auto}
 .sws{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
 .sw{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid var(--bd);vertical-align:-1px;margin-right:6px}
-</style></head><body>
+</style><script>try{document.documentElement.dataset.theme=localStorage.getItem("qotTheme")||"mavi"}catch(e){}</script></head><body>
 <div id="login"><h1>QOT Muhasebe</h1><p class="mu">Devam etmek için ortak hesabınla giriş yap.</p><button class="b" id="in">Google ile giriş yap</button><p id="err" class="rd"></p></div>
 <div id="app" class="hide">
 <header><b>QOT Muhasebe</b><span><span class="mu" id="who"></span> <button class="g" id="out">Çıkış</button></span></header>
@@ -53,10 +58,18 @@ import {getFirestore,collection,onSnapshot,addDoc,setDoc,updateDoc,deleteDoc,doc
 const P=["Berk","Melisa","Dolunay"];
 const app=initializeApp({apiKey:"AIzaSyDM-omizP0xpXpKLD36TAUBnD-A751IFQg",authDomain:"qot-muhendislik.firebaseapp.com",projectId:"qot-muhendislik",storageBucket:"qot-muhendislik.firebasestorage.app",messagingSenderId:"340312127032",appId:"1:340312127032:web:54873b2d0eac858955d8cd"});
 const auth=getAuth(app),db=getFirestore(app);
-const COLS=["expenses","movements","txns","filaments","colors"];
-const S={expenses:[],movements:[],txns:[],filaments:[],colors:[]};
+const COLS=["expenses","movements","txns","filaments","colors","ftypes"];
+const S={expenses:[],movements:[],txns:[],filaments:[],colors:[],ftypes:[]};
 const DEF=[["Siyah","#1a1a1a"],["Beyaz","#f2f2f2"],["Gri","#8a8d91"],["Kırmızı","#d32f2f"],["Turuncu","#f57c00"],["Sarı","#fbc02d"],["Yeşil","#2e9e4f"],["Mavi","#1e66d0"],["Lacivert","#16306b"],["Mor","#7b3fa0"],["Pembe","#e86fa5"],["Kahverengi","#6d4c3d"],["Şeffaf","#cfe8ef"],["Altın","#c9a227"]].map(([name,hex])=>({name,hex}));
 let selC=null;const monthOpen={};
+let theme="mavi";try{theme=localStorage.getItem("qotTheme")||"mavi"}catch{}
+const DEFT=["PLA","PETG","ABS","ASA","TPU","Diğer"],types=()=>[...DEFT,...S.ftypes.map(t=>t.name)];
+const ic=p=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const IC={kasa:ic('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.5"/><path d="M12 8.5V7M12 17v-1.5M8.5 12H7M17 12h-1.5"/>'),
+exp:ic('<path d="M7 4v14M3 14l4 4 4-4"/><path d="M17 20V6M13 10l4-4 4 4"/>'),
+fil:ic('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>'),
+set:ic('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
+bak:ic('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 20h16"/>')};
 const lib=()=>[...DEF,...S.colors];
 let tab="kasa",month=new Date().toISOString().slice(0,7),started=false;
 const TABS={kasa:"Kasa",exp:"Gelir / Gider",fil:"Filament",set:"Ayarlar",bak:"Yedek"};
@@ -81,7 +94,7 @@ const balance=()=>S.movements.reduce((a,m)=>a+(m.type==="in"?m.amount:-m.amount)
 const pending=()=>S.expenses.reduce((a,e)=>a+P.reduce((b,p)=>b+(e.shares?.[p]&&!e.shares[p].paid?e.shares[p].amount:0),0),0);
 
 function render(){
-  $("#nav").innerHTML=Object.entries(TABS).map(([k,v])=>`<button class="${k===tab?"on":""}" data-a="tab" data-k="${k}">${v}</button>`).join("");
+  $("#nav").innerHTML=Object.entries(TABS).map(([k,v])=>`<button class="${k===tab?"on":""}" data-a="tab" data-k="${k}">${IC[k]}${v}</button>`).join("");
   $("#main").innerHTML={kasa:vKasa,exp:vExp,fil:vFil,set:vSet,bak:vBak}[tab]();
 }
 
@@ -132,7 +145,7 @@ function vFil(){
   return `<div class="card"><h2>Yeni filament</h2>
   <div class="sws">${lib().map(c=>`<button class="cs ${selC?.name===c.name?"sel":""}" title="${esc(c.name)}" style="background:${esc(c.hex)}" data-a="selC" data-n="${esc(c.name)}" data-h="${esc(c.hex)}"></button>`).join("")}</div>
   <p class="mu">Seçilen renk: <b id="cn">${selC?esc(selC.name):"—"}</b> · Listede yoksa Ayarlar sekmesinden renk ekle.</p>
-  <div class="row"><label>Malzeme<select id="fm">${["PLA","PETG","ABS","ASA","TPU","Diğer"].map(m=>`<option>${m}</option>`).join("")}</select></label><label>Marka<input id="fb"></label>
+  <div class="row"><label>Malzeme<select id="fm">${types().map(m=>`<option>${m}</option>`).join("")}</select></label><label>Marka<input id="fb"></label>
   <label>Kalan (gram)<input id="fg" inputmode="numeric" value="1000"></label><button class="b" data-a="addFil">Ekle</button></div></div>
   <div class="card"><h2>Stok</h2>${out.length?`<div class="warn">Biten: ${out.map(f=>esc(f.color+" "+f.material)).join(", ")}</div>`:""}
   ${l.length?`<table><tr><th>Renk<th>Malzeme<th class="n">Kalan<th></tr>${l.map(f=>`<tr><td>${sw(f.hex)}${esc(f.color)}<td>${esc(f.material)} <span class="mu">${esc(f.brand)}</span>
@@ -141,12 +154,15 @@ function vFil(){
 }
 
 function vSet(){
-  return `<div class="card"><h2>Kasa bakiyesini düzelt</h2><p class="mu">Şu an: <b>${fmt(balance())}</b>. Gerçek tutarı yaz, fark kasaya "manuel düzeltme" olarak işlenir.</p>
+  return `<div class="card"><h2>Tema</h2><div class="row">${[["mavi","Mavimsi"],["koyu","Koyu gri"],["beyaz","Beyaz"]].map(([k,v])=>`<button class="${theme===k?"b":"g"}" data-a="theme" data-k="${k}" style="padding:9px 14px;font:inherit">${v}</button>`).join("")}</div></div>
+  <div class="card"><h2>Kasa bakiyesini düzelt</h2><p class="mu">Şu an: <b>${fmt(balance())}</b>. Gerçek tutarı yaz, fark kasaya "manuel düzeltme" olarak işlenir.</p>
   <div class="row"><label>Yeni bakiye (TRY)<input id="sb" inputmode="decimal"></label><button class="b" data-a="setBal">Bakiyeyi ayarla</button></div></div>
   <div class="card"><h2>Filament renk kütüphanesi</h2>
   <div class="row"><label>Renk adı<input id="sn"></label><label>Renk<input id="sh" type="color" value="#1e66d0" style="height:38px;padding:2px"></label><button class="b" data-a="addColor">Renk ekle</button></div>
   <p class="mu">Hazır renkler</p><div class="sws">${DEF.map(c=>`<span class="sw" title="${esc(c.name)}" style="background:${esc(c.hex)};width:22px;height:22px"></span>`).join("")}</div>
-  <p class="mu">Eklediğin renkler</p>${S.colors.length?S.colors.map(c=>`<div><span class="sw" style="background:${esc(c.hex)}"></span>${esc(c.name)} <button class="g" data-a="del" data-c="colors" data-id="${c.id}">Sil</button></div>`).join(""):'<p class="mu">Henüz eklenmedi.</p>'}</div>`;
+  <p class="mu">Eklediğin renkler</p>${S.colors.length?S.colors.map(c=>`<div><span class="sw" style="background:${esc(c.hex)}"></span>${esc(c.name)} <button class="g" data-a="del" data-c="colors" data-id="${c.id}">Sil</button></div>`).join(""):'<p class="mu">Henüz eklenmedi.</p>'}</div>
+  <div class="card"><h2>Filament tipleri</h2><div class="row"><label>Yeni tip<input id="tn" placeholder="örn. PC, Nylon"></label><button class="b" data-a="addType">Tip ekle</button></div>
+  <p class="mu">Hazır: ${DEFT.join(", ")}</p>${S.ftypes.map(t=>`<div>${esc(t.name)} <button class="g" data-a="del" data-c="ftypes" data-id="${t.id}">Sil</button></div>`).join("")}</div>`;
 }
 
 function vBak(){
@@ -179,6 +195,8 @@ const A={
   selC:d=>{selC={name:d.n,hex:d.h};document.querySelectorAll(".cs").forEach(b=>b.classList.toggle("sel",b.dataset.n===d.n));$("#cn").textContent=d.n},
   addFil:async()=>{if(!selC)return alert("Önce bir renk seç.");
     await addDoc(collection(db,"filaments"),{color:selC.name,hex:selC.hex,material:val("fm"),brand:val("fb")||"",remaining:num("fg"),logs:[]})},
+  addType:async()=>{if(!val("tn"))return alert("Tip adı gir.");await addDoc(collection(db,"ftypes"),{name:val("tn")})},
+  theme:d=>{theme=d.k;document.documentElement.dataset.theme=theme;try{localStorage.setItem("qotTheme",theme)}catch{}render()},
   addColor:async()=>{if(!val("sn"))return alert("Renk adı gir.");await addDoc(collection(db,"colors"),{name:val("sn"),hex:val("sh")})},
   setBal:async()=>{if(val("sb")==="")return alert("Yeni bakiyeyi yaz.");const t=num("sb"),d=round(t-balance());if(d===0)return;
     await addDoc(collection(db,"movements"),{date:today(),type:d>0?"in":"out",amount:Math.abs(d),note:"Manuel düzeltme (bakiye "+fmt(t)+")"})},
