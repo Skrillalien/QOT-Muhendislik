@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QOT Muhasebe</title>
+<style>
+:root{--bg:#edf1f5;--card:#fff;--tx:#14202b;--mu:#5f6e7c;--bd:#d3dbe3;--ac:#1f5f8b;--rd:#b8362a;--gr:#1b7f46;--ye:#fff4d6}
+@media(prefers-color-scheme:dark){:root{--bg:#10171e;--card:#18222c;--tx:#e6edf3;--mu:#8fa0b0;--bd:#2b3946;--ac:#5aa9dd;--rd:#f0786a;--gr:#4cc47f;--ye:#3a3320}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 "Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-bottom:1px solid var(--bd);background:var(--card)}
+header b{font-size:17px}
+nav{display:flex;gap:4px;padding:8px 14px;overflow-x:auto;background:var(--card);border-bottom:1px solid var(--bd)}
+nav button{border:0;background:none;color:var(--mu);padding:8px 14px;font:inherit;cursor:pointer;border-bottom:3px solid transparent}
+nav button.on{color:var(--tx);border-color:var(--ac);font-weight:600}
+main{max-width:980px;margin:0 auto;padding:18px 14px 60px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:14px;margin-bottom:14px}
+h2{margin:0 0 10px;font-size:16px}
+.big{font-size:42px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.mu{color:var(--mu)}.rd{color:var(--rd)}.gr{color:var(--gr)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+.row>label{display:flex;flex-direction:column;font-size:12px;color:var(--mu);gap:3px;flex:1 1 130px}
+input,select,button.b{font:inherit;padding:8px;border:1px solid var(--bd);border-radius:4px;background:var(--bg);color:var(--tx)}
+button.b{background:var(--ac);color:#fff;border:0;cursor:pointer;padding:9px 14px}
+button.g{background:none;border:1px solid var(--bd);color:var(--tx);cursor:pointer;border-radius:4px;padding:3px 8px;font:inherit;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
+th{color:var(--mu);font-weight:500;font-size:12px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;border:1px solid var(--bd);cursor:pointer;background:none;color:inherit;font-family:inherit}
+.chip.ok{background:var(--gr);color:#fff;border-color:var(--gr)}
+.chip.no{border-color:var(--rd);color:var(--rd)}
+.warn{background:var(--ye);padding:8px 10px;border-radius:4px;margin-bottom:10px}
+#login{text-align:center;padding:80px 20px}
+.hide{display:none!important}
+.sw{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid var(--bd);vertical-align:-1px;margin-right:6px}
+</style></head><body>
+<div id="login"><h1>QOT Muhasebe</h1><p class="mu">Devam etmek için ortak hesabınla giriş yap.</p><button class="b" id="in">Google ile giriş yap</button><p id="err" class="rd"></p></div>
+<div id="app" class="hide">
+<header><b>QOT Muhasebe</b><span><span class="mu" id="who"></span> <button class="g" id="out">Çıkış</button></span></header>
+<nav id="nav"></nav><main id="main"></main></div>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getFirestore,collection,onSnapshot,addDoc,setDoc,updateDoc,deleteDoc,doc,arrayUnion} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const P=["Berk","Melisa","Dolunay"];
+const app=initializeApp({apiKey:"AIzaSyDM-omizP0xpXpKLD36TAUBnD-A751IFQg",authDomain:"qot-muhendislik.firebaseapp.com",projectId:"qot-muhendislik",storageBucket:"qot-muhendislik.firebasestorage.app",messagingSenderId:"340312127032",appId:"1:340312127032:web:54873b2d0eac858955d8cd"});
+const auth=getAuth(app),db=getFirestore(app);
+const COLS=["expenses","movements","txns","filaments"];
+const S={expenses:[],movements:[],txns:[],filaments:[]};
+let tab="kasa",month=new Date().toISOString().slice(0,7),started=false;
+const TABS={kasa:"Kasa",exp:"Harcamalar",txn:"Aylık gelir/gider",fil:"Filament",bak:"Yedek"};
+const $=s=>document.querySelector(s),today=()=>new Date().toISOString().slice(0,10);
+const fmt=n=>new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY"}).format(n||0);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const val=id=>document.getElementById(id)?.value.trim();
+const num=id=>parseFloat((val(id)||"").replace(",","."))||0;
+const round=n=>Math.round(n*100)/100;
+
+$("#in").onclick=()=>signInWithPopup(auth,new GoogleAuthProvider()).catch(e=>$("#err").textContent="Giriş yapılamadı: "+e.code);
+$("#out").onclick=()=>signOut(auth);
+onAuthStateChanged(auth,u=>{
+  $("#login").classList.toggle("hide",!!u);$("#app").classList.toggle("hide",!u);
+  if(!u)return;$("#who").textContent=u.displayName||u.email;
+  if(started)return;started=true;
+  COLS.forEach(c=>onSnapshot(collection(db,c),s=>{S[c]=s.docs.map(d=>({id:d.id,...d.data()}));render()},
+    e=>{$("#main").innerHTML='<div class="warn">Veri okunamadı ('+esc(e.code)+'). Bu e-posta Firestore kurallarındaki listede olmayabilir.</div>'}));
+});
+
+const balance=()=>S.movements.reduce((a,m)=>a+(m.type==="in"?m.amount:-m.amount),0);
+const pending=()=>S.expenses.reduce((a,e)=>a+P.reduce((b,p)=>b+(e.shares?.[p]&&!e.shares[p].paid?e.shares[p].amount:0),0),0);
+
+function render(){
+  $("#nav").innerHTML=Object.entries(TABS).map(([k,v])=>`<button class="${k===tab?"on":""}" data-a="tab" data-k="${k}">${v}</button>`).join("");
+  $("#main").innerHTML={kasa:vKasa,exp:vExp,txn:vTxn,fil:vFil,bak:vBak}[tab]();
+}
+
+function vKasa(){
+  const b=balance(),pe=pending();
+  const mv=[...S.movements].sort((a,b)=>(b.date||"").localeCompare(a.date||"")||0);
+  return `<div class="card"><div class="mu">Kasa bakiyesi</div><div class="big ${b<0?"rd":""}">${fmt(b)}</div>
+  <div class="mu">Ortaklardan beklenen: ${fmt(pe)} · Beklenenler gelince: ${fmt(b+pe)}</div></div>
+  <div class="card"><h2>Kasaya para yatır</h2><div class="row">
+  <label>Ortak<select id="dp">${P.map(p=>`<option>${p}</option>`).join("")}</select></label>
+  <label>Tutar<input id="da" inputmode="decimal"></label><label>Not<input id="dn"></label>
+  <button class="b" data-a="dep">Yatır</button></div></div>
+  <div class="card"><h2>Kasa hareketleri</h2>${mv.length?`<table><tr><th>Tarih<th>Açıklama<th class="n">Tutar</tr>${mv.map(m=>`<tr><td>${esc(m.date)}<td>${m.type==="in"?esc(m.partner||"")+" · ":""}${esc(m.note)}<td class="n ${m.type==="in"?"gr":"rd"}">${m.type==="in"?"+":"−"}${fmt(m.amount)}</tr>`).join("")}</table>`:'<p class="mu">Henüz hareket yok. Yukarıdan ilk yatırımı gir.</p>'}</div>`;
+}
+
+function vExp(){
+  const ex=[...S.expenses].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  const avail=Math.max(0,balance()+pending());
+  return `<div class="card"><h2>Yeni harcama</h2>
+  <div class="warn">Kasada kullanılabilir ${fmt(avail)} var. Tutar bundan fazlaysa eksik kısım 3 ortağa eşit bölünür.</div>
+  <div class="row"><label>Ödenen kurum<input id="ei"></label><label>Açıklama<input id="ed"></label>
+  <label>Tarih<input id="et" type="date" value="${today()}"></label><label>Tutar (TRY)<input id="ea" inputmode="decimal"></label>
+  <label>Dekont linki<input id="el" placeholder="Drive linki"></label><button class="b" data-a="addExp">Ekle</button></div></div>
+  <div class="card"><h2>Harcamalar</h2>${ex.length?`<div style="overflow-x:auto"><table><tr><th>Tarih<th>Kurum / açıklama<th class="n">Toplam<th class="n">Kasadan${P.map(p=>`<th>${p}`).join("")}<th></tr>
+  ${ex.map(e=>`<tr><td>${esc(e.date)}<td><b>${esc(e.institution)}</b><br><span class="mu">${esc(e.description)}</span>${e.receipt?` <a href="${esc(e.receipt)}" target="_blank" rel="noopener">dekont</a>`:""}
+  <td class="n">${fmt(e.total)}<td class="n">${fmt(e.fromKasa)}
+  ${P.map(p=>{const s=e.shares?.[p];return s&&s.amount>0?`<td><button class="chip ${s.paid?"ok":"no"}" data-a="pay" data-id="${e.id}" data-p="${p}">${s.paid?"Ödendi":"Bekliyor"}</button><br><span class="mu">${fmt(s.amount)}</span>`:'<td class="mu">—'}).join("")}
+  <td><button class="g" data-a="delExp" data-id="${e.id}">Sil</button></tr>`).join("")}</table></div>`:'<p class="mu">Henüz harcama yok.</p>'}</div>`;
+}
+
+function vTxn(){
+  const l=S.txns.filter(t=>(t.date||"").startsWith(month)).sort((a,b)=>b.date.localeCompare(a.date));
+  const inc=l.filter(t=>t.type==="income").reduce((a,t)=>a+t.amount,0),exo=l.filter(t=>t.type==="expense").reduce((a,t)=>a+t.amount,0);
+  return `<div class="card"><h2>Yeni kayıt</h2><div class="row">
+  <label>Tür<select id="tt"><option value="income">Gelir</option><option value="expense">Gider</option></select></label>
+  <label>Tarih<input id="td" type="date" value="${today()}"></label><label>Kategori<input id="tc"></label>
+  <label>Tutar<input id="ta" inputmode="decimal"></label><label>Not<input id="tn"></label><button class="b" data-a="addTxn">Ekle</button></div></div>
+  <div class="card"><div class="row"><label>Ay<input type="month" id="tm" value="${month}"></label></div>
+  <p>Gelir <b class="gr">${fmt(inc)}</b> · Gider <b class="rd">${fmt(exo)}</b> · Net <b>${fmt(inc-exo)}</b></p>
+  ${l.length?`<table><tr><th>Tarih<th>Kategori / not<th class="n">Tutar<th></tr>${l.map(t=>`<tr><td>${esc(t.date)}<td>${esc(t.category)} <span class="mu">${esc(t.note)}</span><td class="n ${t.type==="income"?"gr":"rd"}">${t.type==="income"?"+":"−"}${fmt(t.amount)}<td><button class="g" data-a="del" data-c="txns" data-id="${t.id}">Sil</button></tr>`).join("")}</table>`:'<p class="mu">Bu ay için kayıt yok.</p>'}</div>`;
+}
+
+function vFil(){
+  const l=[...S.filaments].sort((a,b)=>(a.color||"").localeCompare(b.color||""));
+  const out=l.filter(f=>f.remaining<=0);
+  return `<div class="card"><h2>Yeni filament</h2><div class="row">
+  <label>Renk<input id="fc"></label><label>Malzeme<input id="fm" placeholder="PLA, PETG…"></label><label>Marka<input id="fb"></label>
+  <label>Kalan (gram)<input id="fg" inputmode="numeric" value="1000"></label><button class="b" data-a="addFil">Ekle</button></div></div>
+  <div class="card"><h2>Stok</h2>${out.length?`<div class="warn">Biten: ${out.map(f=>esc(f.color+" "+f.material)).join(", ")}</div>`:""}
+  ${l.length?`<table><tr><th>Renk<th>Malzeme<th class="n">Kalan<th></tr>${l.map(f=>`<tr><td>${esc(f.color)}<td>${esc(f.material)} <span class="mu">${esc(f.brand)}</span>
+  <td class="n ${f.remaining<=0?"rd":""}">${f.remaining<=0?"Bitti":f.remaining+" g"}
+  <td><button class="g" data-a="use" data-id="${f.id}">Kullan</button> <button class="g" data-a="add" data-id="${f.id}">Ekle</button> <button class="g" data-a="del" data-c="filaments" data-id="${f.id}">Sil</button></tr>`).join("")}</table>`:'<p class="mu">Henüz filament yok.</p>'}</div>`;
+}
+
+function vBak(){
+  return `<div class="card"><h2>Yedek al / geri yükle</h2><p class="mu">Tüm veriler tek JSON dosyasına yazılır (format: qot-v1). Geri yüklemede aynı kimlikli kayıtlar üzerine yazılır, diğerleri silinmez.</p>
+  <button class="b" data-a="exp">JSON olarak indir</button> <label class="g" style="display:inline-block;padding:9px 14px">JSON yükle<input type="file" id="imp" accept=".json" class="hide"></label></div>`;
+}
+
+const A={
+  tab:d=>{tab=d.k;render()},
+  dep:async()=>{const a=num("da");if(a<=0)return alert("Tutar gir.");
+    await addDoc(collection(db,"movements"),{date:today(),type:"in",amount:a,partner:val("dp"),note:val("dn")||"Kasaya yatırım"})},
+  addExp:async()=>{const T=num("ea"),inst=val("ei");if(T<=0||!inst)return alert("Kurum ve tutar gerekli.");
+    const fromKasa=round(Math.min(Math.max(0,balance()+pending()),T)),each=round((T-fromKasa)/3),shares={};
+    P.forEach(p=>shares[p]={amount:each,paid:each===0,paidDate:null,mid:null});
+    const r=await addDoc(collection(db,"expenses"),{institution:inst,description:val("ed"),date:val("et")||today(),total:T,fromKasa,receipt:val("el"),shares});
+    await addDoc(collection(db,"movements"),{date:val("et")||today(),type:"out",amount:T,expenseId:r.id,note:inst+(val("ed")?" – "+val("ed"):"")})},
+  pay:async d=>{const e=S.expenses.find(x=>x.id===d.id),s=e.shares[d.p],ref=doc(db,"expenses",e.id);
+    if(!s.paid){const m=await addDoc(collection(db,"movements"),{date:today(),type:"in",amount:s.amount,partner:d.p,expenseId:e.id,note:"Pay: "+e.institution});
+      await updateDoc(ref,{["shares."+d.p]:{...s,paid:true,paidDate:today(),mid:m.id}})}
+    else{if(s.mid)await deleteDoc(doc(db,"movements",s.mid));await updateDoc(ref,{["shares."+d.p]:{...s,paid:false,paidDate:null,mid:null}})}},
+  delExp:async d=>{if(!confirm("Harcama ve bağlı kasa hareketleri silinsin mi?"))return;
+    for(const m of S.movements.filter(m=>m.expenseId===d.id))await deleteDoc(doc(db,"movements",m.id));
+    await deleteDoc(doc(db,"expenses",d.id))},
+  addTxn:async()=>{const a=num("ta");if(a<=0)return alert("Tutar gir.");
+    await addDoc(collection(db,"txns"),{type:val("tt"),date:val("td")||today(),category:val("tc"),amount:a,note:val("tn")})},
+  addFil:async()=>{if(!val("fc"))return alert("Renk gir.");
+    await addDoc(collection(db,"filaments"),{color:val("fc"),material:val("fm"),brand:val("fb"),remaining:num("fg"),logs:[]})},
+  use:async d=>{const f=S.filaments.find(x=>x.id===d.id),g=parseFloat(prompt("Kaç gram kullanıldı?"));if(!(g>0))return;
+    await updateDoc(doc(db,"filaments",f.id),{remaining:Math.max(0,f.remaining-g),logs:arrayUnion({date:today(),g})})},
+  add:async d=>{const f=S.filaments.find(x=>x.id===d.id),g=parseFloat(prompt("Kaç gram eklendi? (yeni makara için 1000)"));if(!(g>0))return;
+    await updateDoc(doc(db,"filaments",f.id),{remaining:f.remaining+g})},
+  del:async d=>{if(confirm("Silinsin mi?"))await deleteDoc(doc(db,d.c,d.id))},
+  exp:()=>{const out={format:"qot-v1",exportedAt:new Date().toISOString()};COLS.forEach(c=>out[c]=S[c]);
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,1)],{type:"application/json"}));
+    a.download="qot-yedek-"+today()+".json";a.click()}
+};
+document.addEventListener("click",e=>{const t=e.target.closest("[data-a]");if(t&&A[t.dataset.a])A[t.dataset.a](t.dataset).catch(x=>alert("Hata: "+x.code||x))});
+document.addEventListener("change",async e=>{
+  if(e.target.id==="tm"){month=e.target.value;render()}
+  if(e.target.id==="imp"){const f=e.target.files[0];if(!f)return;
+    try{const j=JSON.parse(await f.text());if(j.format!=="qot-v1")throw 0;
+      for(const c of COLS)for(const {id,...r} of j[c]||[])await setDoc(doc(db,c,id),r);alert("Yedek yüklendi.")}
+    catch{alert("Geçersiz dosya. qot-v1 formatında JSON gerekli.")}}
+});
+</script></body></html>
