@@ -32,6 +32,10 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .warn{background:var(--ye);padding:8px 10px;border-radius:4px;margin-bottom:10px}
 #login{text-align:center;padding:80px 20px}
 .hide{display:none!important}
+.cs{width:30px;height:30px;border-radius:50%;border:1px solid var(--bd);cursor:pointer;padding:0}
+.cs.sel{outline:3px solid var(--ac);outline-offset:2px}
+.mh td{background:var(--bg);font-weight:600;padding-top:14px}
+.sws{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
 .sw{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid var(--bd);vertical-align:-1px;margin-right:6px}
 </style></head><body>
 <div id="login"><h1>QOT Muhasebe</h1><p class="mu">Devam etmek için ortak hesabınla giriş yap.</p><button class="b" id="in">Google ile giriş yap</button><p id="err" class="rd"></p></div>
@@ -46,10 +50,13 @@ import {getFirestore,collection,onSnapshot,addDoc,setDoc,updateDoc,deleteDoc,doc
 const P=["Berk","Melisa","Dolunay"];
 const app=initializeApp({apiKey:"AIzaSyDM-omizP0xpXpKLD36TAUBnD-A751IFQg",authDomain:"qot-muhendislik.firebaseapp.com",projectId:"qot-muhendislik",storageBucket:"qot-muhendislik.firebasestorage.app",messagingSenderId:"340312127032",appId:"1:340312127032:web:54873b2d0eac858955d8cd"});
 const auth=getAuth(app),db=getFirestore(app);
-const COLS=["expenses","movements","txns","filaments"];
-const S={expenses:[],movements:[],txns:[],filaments:[]};
+const COLS=["expenses","movements","txns","filaments","colors"];
+const S={expenses:[],movements:[],txns:[],filaments:[],colors:[]};
+const DEF=[["Siyah","#1a1a1a"],["Beyaz","#f2f2f2"],["Gri","#8a8d91"],["Kırmızı","#d32f2f"],["Turuncu","#f57c00"],["Sarı","#fbc02d"],["Yeşil","#2e9e4f"],["Mavi","#1e66d0"],["Lacivert","#16306b"],["Mor","#7b3fa0"],["Pembe","#e86fa5"],["Kahverengi","#6d4c3d"],["Şeffaf","#cfe8ef"],["Altın","#c9a227"]].map(([name,hex])=>({name,hex}));
+let selC=null;
+const lib=()=>[...DEF,...S.colors];
 let tab="kasa",month=new Date().toISOString().slice(0,7),started=false;
-const TABS={kasa:"Kasa",exp:"Harcamalar",txn:"Aylık gelir/gider",fil:"Filament",bak:"Yedek"};
+const TABS={kasa:"Kasa",exp:"Harcamalar",txn:"Aylık gelir/gider",fil:"Filament",set:"Ayarlar",bak:"Yedek"};
 const $=s=>document.querySelector(s),today=()=>new Date().toISOString().slice(0,10);
 const fmt=n=>new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY"}).format(n||0);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -72,7 +79,7 @@ const pending=()=>S.expenses.reduce((a,e)=>a+P.reduce((b,p)=>b+(e.shares?.[p]&&!
 
 function render(){
   $("#nav").innerHTML=Object.entries(TABS).map(([k,v])=>`<button class="${k===tab?"on":""}" data-a="tab" data-k="${k}">${v}</button>`).join("");
-  $("#main").innerHTML={kasa:vKasa,exp:vExp,txn:vTxn,fil:vFil,bak:vBak}[tab]();
+  $("#main").innerHTML={kasa:vKasa,exp:vExp,txn:vTxn,fil:vFil,set:vSet,bak:vBak}[tab]();
 }
 
 function vKasa(){
@@ -90,16 +97,22 @@ function vKasa(){
 function vExp(){
   const ex=[...S.expenses].sort((a,b)=>(b.date||"").localeCompare(a.date||""));
   const avail=Math.max(0,balance()+pending());
+  const mn=m=>new Date(m+"-01").toLocaleDateString("tr-TR",{month:"long",year:"numeric"});
+  const pend=x=>P.reduce((b,p)=>b+(x.shares?.[p]&&!x.shares[p].paid?x.shares[p].amount:0),0);
+  let rows="",cur=null;
+  ex.forEach(e=>{const m=(e.date||"").slice(0,7);
+    if(m!==cur){cur=m;const l=ex.filter(x=>(x.date||"").slice(0,7)===m);
+      rows+=`<tr class="mh"><td colspan="8">${m?mn(m):"Tarihsiz"} · Toplam ${fmt(l.reduce((a,x)=>a+x.total,0))} · Bekleyen ortak payı ${fmt(l.reduce((a,x)=>a+pend(x),0))}</tr>`}
+    rows+=`<tr><td>${esc(e.date)}<td><b>${esc(e.institution)}</b><br><span class="mu">${esc(e.description)}</span><br>${e.receipt?`<a href="${esc(e.receipt)}" target="_blank" rel="noopener">Dekont</a> <button class="g" data-a="rcp" data-id="${e.id}">Değiştir</button>`:`<button class="g" data-a="rcp" data-id="${e.id}">+ Dekont ekle</button>`}
+    <td class="n">${fmt(e.total)}<td class="n">${fmt(e.fromKasa)}
+    ${P.map(p=>{const s=e.shares?.[p];return s&&s.amount>0?`<td><button class="chip ${s.paid?"ok":"no"}" data-a="pay" data-id="${e.id}" data-p="${p}">${s.paid?"Ödendi":"Bekliyor"}</button><br><span class="mu">${fmt(s.amount)}</span>`:'<td class="mu">—'}).join("")}
+    <td><button class="g" data-a="delExp" data-id="${e.id}">Sil</button></tr>`});
   return `<div class="card"><h2>Yeni harcama</h2>
   <div class="warn">Kasada kullanılabilir ${fmt(avail)} var. Tutar bundan fazlaysa eksik kısım 3 ortağa eşit bölünür.</div>
   <div class="row"><label>Ödenen kurum<input id="ei"></label><label>Açıklama<input id="ed"></label>
   <label>Tarih<input id="et" type="date" value="${today()}"></label><label>Tutar (TRY)<input id="ea" inputmode="decimal"></label>
-  <label>Dekont linki<input id="el" placeholder="Drive linki"></label><button class="b" data-a="addExp">Ekle</button></div></div>
-  <div class="card"><h2>Harcamalar</h2>${ex.length?`<div style="overflow-x:auto"><table><tr><th>Tarih<th>Kurum / açıklama<th class="n">Toplam<th class="n">Kasadan${P.map(p=>`<th>${p}`).join("")}<th></tr>
-  ${ex.map(e=>`<tr><td>${esc(e.date)}<td><b>${esc(e.institution)}</b><br><span class="mu">${esc(e.description)}</span>${e.receipt?` <a href="${esc(e.receipt)}" target="_blank" rel="noopener">dekont</a>`:""}
-  <td class="n">${fmt(e.total)}<td class="n">${fmt(e.fromKasa)}
-  ${P.map(p=>{const s=e.shares?.[p];return s&&s.amount>0?`<td><button class="chip ${s.paid?"ok":"no"}" data-a="pay" data-id="${e.id}" data-p="${p}">${s.paid?"Ödendi":"Bekliyor"}</button><br><span class="mu">${fmt(s.amount)}</span>`:'<td class="mu">—'}).join("")}
-  <td><button class="g" data-a="delExp" data-id="${e.id}">Sil</button></tr>`).join("")}</table></div>`:'<p class="mu">Henüz harcama yok.</p>'}</div>`;
+  <button class="b" data-a="addExp">Ekle</button></div></div>
+  <div class="card"><h2>Harcamalar</h2>${ex.length?`<div style="overflow-x:auto"><table><tr><th>Tarih<th>Kurum / açıklama<th class="n">Toplam<th class="n">Kasadan${P.map(p=>`<th>${p}`).join("")}<th></tr>${rows}</table></div>`:'<p class="mu">Henüz harcama yok.</p>'}</div>`;
 }
 
 function vTxn(){
@@ -116,14 +129,25 @@ function vTxn(){
 
 function vFil(){
   const l=[...S.filaments].sort((a,b)=>(a.color||"").localeCompare(b.color||""));
-  const out=l.filter(f=>f.remaining<=0);
-  return `<div class="card"><h2>Yeni filament</h2><div class="row">
-  <label>Renk<input id="fc"></label><label>Malzeme<input id="fm" placeholder="PLA, PETG…"></label><label>Marka<input id="fb"></label>
+  const out=l.filter(f=>f.remaining<=0),sw=c=>`<span class="sw" style="background:${esc(c||"#999")}"></span>`;
+  return `<div class="card"><h2>Yeni filament</h2>
+  <div class="sws">${lib().map(c=>`<button class="cs ${selC?.name===c.name?"sel":""}" title="${esc(c.name)}" style="background:${esc(c.hex)}" data-a="selC" data-n="${esc(c.name)}" data-h="${esc(c.hex)}"></button>`).join("")}</div>
+  <p class="mu">Seçilen renk: <b id="cn">${selC?esc(selC.name):"—"}</b> · Listede yoksa Ayarlar sekmesinden renk ekle.</p>
+  <div class="row"><label>Malzeme<select id="fm">${["PLA","PETG","ABS","ASA","TPU","Diğer"].map(m=>`<option>${m}</option>`).join("")}</select></label><label>Marka<input id="fb"></label>
   <label>Kalan (gram)<input id="fg" inputmode="numeric" value="1000"></label><button class="b" data-a="addFil">Ekle</button></div></div>
   <div class="card"><h2>Stok</h2>${out.length?`<div class="warn">Biten: ${out.map(f=>esc(f.color+" "+f.material)).join(", ")}</div>`:""}
-  ${l.length?`<table><tr><th>Renk<th>Malzeme<th class="n">Kalan<th></tr>${l.map(f=>`<tr><td>${esc(f.color)}<td>${esc(f.material)} <span class="mu">${esc(f.brand)}</span>
+  ${l.length?`<table><tr><th>Renk<th>Malzeme<th class="n">Kalan<th></tr>${l.map(f=>`<tr><td>${sw(f.hex)}${esc(f.color)}<td>${esc(f.material)} <span class="mu">${esc(f.brand)}</span>
   <td class="n ${f.remaining<=0?"rd":""}">${f.remaining<=0?"Bitti":f.remaining+" g"}
   <td><button class="g" data-a="use" data-id="${f.id}">Kullan</button> <button class="g" data-a="add" data-id="${f.id}">Ekle</button> <button class="g" data-a="del" data-c="filaments" data-id="${f.id}">Sil</button></tr>`).join("")}</table>`:'<p class="mu">Henüz filament yok.</p>'}</div>`;
+}
+
+function vSet(){
+  return `<div class="card"><h2>Kasa bakiyesini düzelt</h2><p class="mu">Şu an: <b>${fmt(balance())}</b>. Gerçek tutarı yaz, fark kasaya "manuel düzeltme" olarak işlenir.</p>
+  <div class="row"><label>Yeni bakiye (TRY)<input id="sb" inputmode="decimal"></label><button class="b" data-a="setBal">Bakiyeyi ayarla</button></div></div>
+  <div class="card"><h2>Filament renk kütüphanesi</h2>
+  <div class="row"><label>Renk adı<input id="sn"></label><label>Renk<input id="sh" type="color" value="#1e66d0" style="height:38px;padding:2px"></label><button class="b" data-a="addColor">Renk ekle</button></div>
+  <p class="mu">Hazır renkler</p><div class="sws">${DEF.map(c=>`<span class="sw" title="${esc(c.name)}" style="background:${esc(c.hex)};width:22px;height:22px"></span>`).join("")}</div>
+  <p class="mu">Eklediğin renkler</p>${S.colors.length?S.colors.map(c=>`<div><span class="sw" style="background:${esc(c.hex)}"></span>${esc(c.name)} <button class="g" data-a="del" data-c="colors" data-id="${c.id}">Sil</button></div>`).join(""):'<p class="mu">Henüz eklenmedi.</p>'}</div>`;
 }
 
 function vBak(){
@@ -138,7 +162,7 @@ const A={
   addExp:async()=>{const T=num("ea"),inst=val("ei");if(T<=0||!inst)return alert("Kurum ve tutar gerekli.");
     const fromKasa=round(Math.min(Math.max(0,balance()+pending()),T)),each=round((T-fromKasa)/3),shares={};
     P.forEach(p=>shares[p]={amount:each,paid:each===0,paidDate:null,mid:null});
-    const r=await addDoc(collection(db,"expenses"),{institution:inst,description:val("ed"),date:val("et")||today(),total:T,fromKasa,receipt:val("el"),shares});
+    const r=await addDoc(collection(db,"expenses"),{institution:inst,description:val("ed"),date:val("et")||today(),total:T,fromKasa,receipt:"",shares});
     await addDoc(collection(db,"movements"),{date:val("et")||today(),type:"out",amount:T,expenseId:r.id,note:inst+(val("ed")?" – "+val("ed"):"")})},
   pay:async d=>{const e=S.expenses.find(x=>x.id===d.id),s=e.shares[d.p],ref=doc(db,"expenses",e.id);
     if(!s.paid){const m=await addDoc(collection(db,"movements"),{date:today(),type:"in",amount:s.amount,partner:d.p,expenseId:e.id,note:"Pay: "+e.institution});
@@ -149,8 +173,14 @@ const A={
     await deleteDoc(doc(db,"expenses",d.id))},
   addTxn:async()=>{const a=num("ta");if(a<=0)return alert("Tutar gir.");
     await addDoc(collection(db,"txns"),{type:val("tt"),date:val("td")||today(),category:val("tc"),amount:a,note:val("tn")})},
-  addFil:async()=>{if(!val("fc"))return alert("Renk gir.");
-    await addDoc(collection(db,"filaments"),{color:val("fc"),material:val("fm"),brand:val("fb"),remaining:num("fg"),logs:[]})},
+  selC:d=>{selC={name:d.n,hex:d.h};document.querySelectorAll(".cs").forEach(b=>b.classList.toggle("sel",b.dataset.n===d.n));$("#cn").textContent=d.n},
+  addFil:async()=>{if(!selC)return alert("Önce bir renk seç.");
+    await addDoc(collection(db,"filaments"),{color:selC.name,hex:selC.hex,material:val("fm"),brand:val("fb")||"",remaining:num("fg"),logs:[]})},
+  addColor:async()=>{if(!val("sn"))return alert("Renk adı gir.");await addDoc(collection(db,"colors"),{name:val("sn"),hex:val("sh")})},
+  setBal:async()=>{if(val("sb")==="")return alert("Yeni bakiyeyi yaz.");const t=num("sb"),d=round(t-balance());if(d===0)return;
+    await addDoc(collection(db,"movements"),{date:today(),type:d>0?"in":"out",amount:Math.abs(d),note:"Manuel düzeltme (bakiye "+fmt(t)+")"})},
+  rcp:async d=>{const e=S.expenses.find(x=>x.id===d.id),l=prompt("Dekont linki (Drive vb.):",e.receipt||"");if(l===null)return;
+    await updateDoc(doc(db,"expenses",e.id),{receipt:l.trim()})},
   use:async d=>{const f=S.filaments.find(x=>x.id===d.id),g=parseFloat(prompt("Kaç gram kullanıldı?"));if(!(g>0))return;
     await updateDoc(doc(db,"filaments",f.id),{remaining:Math.max(0,f.remaining-g),logs:arrayUnion({date:today(),g})})},
   add:async d=>{const f=S.filaments.find(x=>x.id===d.id),g=parseFloat(prompt("Kaç gram eklendi? (yeni makara için 1000)"));if(!(g>0))return;
