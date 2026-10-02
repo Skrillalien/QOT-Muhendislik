@@ -23,6 +23,7 @@ h2{margin:0 0 10px;font-size:16px}
 input,select,button.b{font:inherit;padding:8px;border:1px solid var(--bd);border-radius:4px;background:var(--bg);color:var(--tx)}
 button.b{background:var(--ac);color:#fff;border:0;cursor:pointer;padding:9px 14px}
 button.g{background:none;border:1px solid var(--bd);color:var(--tx);cursor:pointer;border-radius:4px;padding:3px 8px;font:inherit;font-size:13px}
+table input{padding:5px;width:100%}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
 th{color:var(--mu);font-weight:500;font-size:12px}
@@ -61,8 +62,8 @@ import {getFirestore,collection,onSnapshot,addDoc,setDoc,updateDoc,deleteDoc,doc
 const P=["Berk","Melisa","Dolunay"];
 const app=initializeApp({apiKey:"AIzaSyDM-omizP0xpXpKLD36TAUBnD-A751IFQg",authDomain:"qot-muhendislik.firebaseapp.com",projectId:"qot-muhendislik",storageBucket:"qot-muhendislik.firebasestorage.app",messagingSenderId:"340312127032",appId:"1:340312127032:web:54873b2d0eac858955d8cd"});
 const auth=getAuth(app),db=getFirestore(app);
-const COLS=["expenses","movements","txns","filaments","colors","ftypes"];
-const S={expenses:[],movements:[],txns:[],filaments:[],colors:[],ftypes:[],company:[]};
+const COLS=["expenses","movements","txns","filaments","colors","ftypes","products"];
+const S={expenses:[],movements:[],txns:[],filaments:[],colors:[],ftypes:[],products:[],company:[]};
 let editC=false;const shown={};
 const DEF=[["Siyah","#1a1a1a"],["Beyaz","#f2f2f2"],["Gri","#8a8d91"],["Kırmızı","#d32f2f"],["Turuncu","#f57c00"],["Sarı","#fbc02d"],["Yeşil","#2e9e4f"],["Mavi","#1e66d0"],["Lacivert","#16306b"],["Mor","#7b3fa0"],["Pembe","#e86fa5"],["Kahverengi","#6d4c3d"],["Şeffaf","#cfe8ef"],["Altın","#c9a227"]].map(([name,hex])=>({name,hex}));
 let selC=null;const monthOpen={};
@@ -73,11 +74,12 @@ const IC={kasa:ic('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="
 exp:ic('<path d="M7 4v14M3 14l4 4 4-4"/><path d="M17 20V6M13 10l4-4 4 4"/>'),
 fil:ic('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>'),
 set:ic('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
+prd:ic('<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'),
 cmp:ic('<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>'),
 bak:ic('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 20h16"/>')};
 const lib=()=>[...DEF,...S.colors];
 let tab="kasa",month=new Date().toISOString().slice(0,7),started=false;
-const TABS={kasa:"Kasa",exp:"Gelir / Gider",fil:"Filament",cmp:"Şirket",set:"Ayarlar",bak:"Yedek"};
+const TABS={kasa:"Kasa",exp:"Gelir / Gider",fil:"Filament",prd:"Ürünler",cmp:"Şirket",set:"Ayarlar",bak:"Yedek"};
 const $=s=>document.querySelector(s),today=()=>new Date().toISOString().slice(0,10);
 const fmt=n=>new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY"}).format(n||0);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -100,7 +102,7 @@ const pending=()=>S.expenses.reduce((a,e)=>a+P.reduce((b,p)=>b+(e.shares?.[p]&&!
 
 function render(){
   $("#nav").innerHTML=Object.entries(TABS).map(([k,v])=>`<button class="${k===tab?"on":""}" data-a="tab" data-k="${k}">${IC[k]}${v}</button>`).join("");
-  $("#main").innerHTML={kasa:vKasa,exp:vExp,fil:vFil,cmp:vCmp,set:vSet,bak:vBak}[tab]();
+  $("#main").innerHTML={kasa:vKasa,exp:vExp,fil:vFil,prd:vPrd,cmp:vCmp,set:vSet,bak:vBak}[tab]();
 }
 
 function vKasa(){
@@ -170,6 +172,24 @@ function vSet(){
   <p class="mu">Hazır: ${DEFT.join(", ")}</p>${S.ftypes.map(t=>`<div>${esc(t.name)} <button class="g" data-a="del" data-c="ftypes" data-id="${t.id}">Sil</button></div>`).join("")}</div>`;
 }
 
+const num2=v=>parseFloat(String(v??"").replace(",","."))||0;
+const pcalc=p=>{const cost=(p.comps||[]).reduce((a,c)=>a+num2(c.c)*(num2(c.q)||1),0),net=cost*(1+num2(p.markup)/100);return{cost,net,gross:net*(1+num2(p.kdv)/100)}};
+function vPrd(){
+  const l=[...S.products].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  const blocks=l.map(p=>{const {cost,net,gross}=pcalc(p),pr=num2(p.price),profit=pr/(1+num2(p.kdv)/100)-cost,stale=pr>0&&pr<gross-0.5;
+    const inp=(i,f,v,w)=>`<input data-p="${p.id}" data-i="${i}" data-f="${f}" value="${esc(v)}" ${f==="n"?"":`inputmode="decimal" style="width:${w}px;text-align:right"`}>`;
+    return `<details data-m="p_${p.id}" ${monthOpen["p_"+p.id]?"open":""}><summary><b>${esc(p.name)}</b><span>Maliyet <b>${fmt(cost)}</b></span><span>Önerilen <b>${fmt(gross)}</b></span><span>Satış <b>${pr>0?fmt(pr):"—"}</b></span>${stale?'<span class="rd">Fiyat güncel değil</span>':""}</summary><div>
+    <table><tr><th>Bileşen<th class="n">Adet<th class="n">Birim maliyet<th class="n">Tutar<th></tr>
+    ${(p.comps||[]).map((c,i)=>`<tr><td>${inp(i,"n",c.n)}<td class="n">${inp(i,"q",c.q,70)}<td class="n">${inp(i,"c",c.c,110)}<td class="n">${fmt(num2(c.c)*(num2(c.q)||1))}<td><button class="g" data-a="delComp" data-id="${p.id}" data-i="${i}">Sil</button></tr>`).join("")}
+    <tr><td><input id="cn_${p.id}" placeholder="Yeni bileşen (örn. Ayak)"><td class="n"><input id="cq_${p.id}" value="1" inputmode="decimal" style="width:70px;text-align:right"><td class="n"><input id="cc_${p.id}" placeholder="TL" inputmode="decimal" style="width:110px;text-align:right"><td><td><button class="b" data-a="addComp" data-id="${p.id}">Ekle</button></tr>
+    <tr><td colspan="3"><b>Toplam maliyet</b><td class="n"><b>${fmt(cost)}</b><td></tr></table>
+    <div class="row" style="margin-top:12px"><label>Kâr oranı (%)<input data-p="${p.id}" data-f="markup" value="${esc(p.markup)}" inputmode="decimal"></label>
+    <label>KDV (%)<input data-p="${p.id}" data-f="kdv" value="${esc(p.kdv)}" inputmode="decimal"></label>
+    <label>Satış fiyatı (KDV dahil)<input data-p="${p.id}" data-f="price" value="${esc(p.price||"")}" inputmode="decimal"></label></div>
+    <p>KDV hariç satış: <b>${fmt(net)}</b> · KDV dahil önerilen: <b>${fmt(gross)}</b>${pr>0?` · Mevcut fiyatla kâr: <b class="${profit<0?"rd":"gr"}">${fmt(profit)}</b>${cost>0?` (%${(profit/cost*100).toFixed(1)})`:""}`:""}</p>
+    <p><button class="b" data-a="applyPrice" data-id="${p.id}">Önerilen fiyatı uygula</button> <button class="g" data-a="del" data-c="products" data-id="${p.id}">Ürünü sil</button></p></div></details>`}).join("");
+  return `<div class="card"><h2>Yeni ürün</h2><div class="row"><label>Ürün adı<input id="pn" placeholder="örn. Natura lambader"></label><button class="b" data-a="addProd">Ürün ekle</button></div></div>${blocks||'<p class="mu">Henüz ürün yok.</p>'}`;
+}
 const COPY='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const CHK='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>';
 const CF=[["Şirket bilgileri",[["name","Şirket adı"],["mersis","Mersis no"],["vkn","Vergi kimlik no"],["sicil","Sicil no"],["vd","Vergi dairesi"],["iban","IBAN"]]],
@@ -220,6 +240,12 @@ const A={
   selC:d=>{selC={name:d.n,hex:d.h};document.querySelectorAll(".cs").forEach(b=>b.classList.toggle("sel",b.dataset.n===d.n));$("#cn").textContent=d.n},
   addFil:async()=>{if(!selC)return alert("Önce bir renk seç.");
     await addDoc(collection(db,"filaments"),{color:selC.name,hex:selC.hex,material:val("fm"),brand:val("fb")||"",remaining:num("fg"),logs:[]})},
+  addProd:async()=>{const n=val("pn");if(!n)return alert("Ürün adı gir.");
+    const r=await addDoc(collection(db,"products"),{name:n,comps:[],markup:30,kdv:20,price:0});monthOpen["p_"+r.id]=true;render()},
+  addComp:async d=>{const p=S.products.find(x=>x.id===d.id),n=val("cn_"+d.id);if(!n)return alert("Bileşen adı gir.");
+    await updateDoc(doc(db,"products",p.id),{comps:[...(p.comps||[]),{n,q:num2(val("cq_"+d.id))||1,c:num2(val("cc_"+d.id))}]})},
+  delComp:async d=>{const p=S.products.find(x=>x.id===d.id);await updateDoc(doc(db,"products",p.id),{comps:(p.comps||[]).filter((_,i)=>i!==+d.i)})},
+  applyPrice:async d=>{const p=S.products.find(x=>x.id===d.id);await updateDoc(doc(db,"products",p.id),{price:round(pcalc(p).gross)})},
   editC:()=>{editC=!editC;render()},
   show:d=>{shown[d.k]=!shown[d.k];render()},
   copy:async d=>{const v=cv(d.k);try{await navigator.clipboard.writeText(v)}catch{const t=document.createElement("textarea");t.value=v;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove()}
@@ -252,6 +278,10 @@ const A={
 document.addEventListener("click",e=>{const t=e.target.closest("[data-a]");if(t&&A[t.dataset.a])Promise.resolve(A[t.dataset.a](t.dataset)).catch(x=>alert("Hata: "+(x.code||x)))});
 document.addEventListener("toggle",e=>{const m=e.target.dataset?.m;if(m!==undefined)monthOpen[m]=e.target.open},true);
 document.addEventListener("change",async e=>{
+  const d=e.target.dataset;
+  if(d.p){const p=S.products.find(x=>x.id===d.p);if(!p)return;
+    try{if(d.i!==undefined){const a=(p.comps||[]).map(c=>({...c}));a[+d.i][d.f]=d.f==="n"?e.target.value.trim():num2(e.target.value);await updateDoc(doc(db,"products",p.id),{comps:a})}
+    else await updateDoc(doc(db,"products",p.id),{[d.f]:num2(e.target.value)})}catch(x){alert("Hata: "+(x.code||x))}return}
   if(e.target.id==="tm"){month=e.target.value;render()}
   if(e.target.id==="imp"){const f=e.target.files[0];if(!f)return;
     try{const j=JSON.parse(await f.text());if(j.format!=="qot-v1")throw 0;
