@@ -62,8 +62,8 @@ import {getFirestore,collection,onSnapshot,addDoc,setDoc,updateDoc,deleteDoc,doc
 const P=["Berk","Melisa","Dolunay"];
 const app=initializeApp({apiKey:"AIzaSyDM-omizP0xpXpKLD36TAUBnD-A751IFQg",authDomain:"qot-muhendislik.firebaseapp.com",projectId:"qot-muhendislik",storageBucket:"qot-muhendislik.firebasestorage.app",messagingSenderId:"340312127032",appId:"1:340312127032:web:54873b2d0eac858955d8cd"});
 const auth=getAuth(app),db=getFirestore(app);
-const COLS=["expenses","movements","txns","filaments","colors","ftypes","products","statements","planned"];
-const S={expenses:[],movements:[],txns:[],filaments:[],colors:[],ftypes:[],products:[],statements:[],planned:[],company:[]};
+const COLS=["expenses","movements","txns","filaments","colors","ftypes","products","statements","planned","materials"];
+const S={expenses:[],movements:[],txns:[],filaments:[],colors:[],ftypes:[],products:[],statements:[],planned:[],materials:[],company:[]};
 let editC=false;const shown={};
 const DEF=[["Siyah","#1a1a1a"],["Beyaz","#f2f2f2"],["Gri","#8a8d91"],["Kırmızı","#d32f2f"],["Turuncu","#f57c00"],["Sarı","#fbc02d"],["Yeşil","#2e9e4f"],["Mavi","#1e66d0"],["Lacivert","#16306b"],["Mor","#7b3fa0"],["Pembe","#e86fa5"],["Kahverengi","#6d4c3d"],["Şeffaf","#cfe8ef"],["Altın","#c9a227"]].map(([name,hex])=>({name,hex}));
 let selC=null;const monthOpen={};
@@ -182,7 +182,12 @@ function vSet(){
   <p class="mu">Hazır: ${DEFT.join(", ")}</p>${S.ftypes.map(t=>`<div>${esc(t.name)} <button class="g" data-a="del" data-c="ftypes" data-id="${t.id}">Sil</button></div>`).join("")}</div>`;
 }
 
-const UNITS=["adet","metre","kg","gram","litre"];
+const UNITS=["adet","metre","cm","kg","gram","litre","ml"];
+const CV={"gram>kg":.001,"kg>gram":1000,"cm>metre":.01,"metre>cm":100,"ml>litre":.001,"litre>ml":1000};
+const conv=(u,pu)=>u===pu?1:(CV[u+">"+pu]??NaN);
+const defPU=u=>({gram:"kg",cm:"metre",ml:"litre"})[u]||u;
+const eff=c=>{const m=c.mid&&S.materials.find(x=>x.id===c.mid),u=c.u||"adet";return{price:m?m.price:c.c,pu:m?m.unit:(c.pu||u),u,m}};
+const lineCost=c=>{const e=eff(c),f=conv(e.u,e.pu);return isNaN(f)?0:num2(e.price)*(num2(c.q)||1)*f};
 function vPln(){
   const td=today(),act=S.planned.filter(x=>!x.paid).sort((a,b)=>a.due.localeCompare(b.due)),done=S.planned.filter(x=>x.paid).sort((a,b)=>b.due.localeCompare(a.due));
   const card=x=>{const got=P.reduce((a,p)=>a+(x.shares?.[p]?.paid?x.shares[p].amount:0),0),late=!x.paid&&x.due<td;
@@ -198,22 +203,29 @@ function vPln(){
   ${done.length?`<details data-m="pl_done" ${monthOpen.pl_done?"open":""}><summary><b>Ödenenler</b><span class="mu">${done.length} kayıt</span></summary><div>${done.map(card).join("")}</div></details>`:""}`;
 }
 const num2=v=>parseFloat(String(v??"").replace(",","."))||0;
-const pcalc=p=>{const cost=(p.comps||[]).reduce((a,c)=>a+num2(c.c)*(num2(c.q)||1),0),net=cost*(1+num2(p.markup)/100);return{cost,net,gross:net*(1+num2(p.kdv)/100)}};
+const pcalc=p=>{const cost=(p.comps||[]).reduce((a,c)=>a+lineCost(c),0),net=cost*(1+num2(p.markup)/100);return{cost,net,gross:net*(1+num2(p.kdv)/100)}};
 function vPrd(){
   const l=[...S.products].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
   const blocks=l.map(p=>{const {cost,net,gross}=pcalc(p),pr=num2(p.price),profit=pr/(1+num2(p.kdv)/100)-cost,stale=pr>0&&pr<gross-0.5;
     const inp=(i,f,v,w)=>`<input data-p="${p.id}" data-i="${i}" data-f="${f}" value="${esc(v)}" ${f==="n"?"":`inputmode="decimal" style="width:${w}px;text-align:right"`}>`;
+    const sel=(i,f,v,dis)=>`<select data-p="${p.id}" data-i="${i}" data-f="${f}" ${dis?"disabled":""}>${UNITS.map(u=>`<option ${v===u?"selected":""}>${u}</option>`).join("")}</select>`;
+    const msel=(i,mid)=>`<select data-p="${p.id}" data-i="${i}" data-f="mid"><option value="">Fiyat elle</option>${S.materials.map(m=>`<option value="${m.id}" ${mid===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select>`;
     return `<details data-m="p_${p.id}" ${monthOpen["p_"+p.id]?"open":""}><summary><b>${esc(p.name)}</b><span>Maliyet <b>${fmt(cost)}</b></span><span>Önerilen <b>${fmt(gross)}</b></span><span>Satış <b>${pr>0?fmt(pr):"—"}</b></span>${stale?'<span class="rd">Fiyat güncel değil</span>':""}</summary><div>
-    <table><tr><th>Bileşen<th class="n">Miktar<th>Birim<th class="n">Birim fiyat (TL)<th class="n">Tutar<th></tr>
-    ${(p.comps||[]).map((c,i)=>`<tr><td>${inp(i,"n",c.n)}<td class="n">${inp(i,"q",c.q,70)}<td><select data-p="${p.id}" data-i="${i}" data-f="u">${UNITS.map(u=>`<option ${(c.u||"adet")===u?"selected":""}>${u}</option>`).join("")}</select><td class="n">${inp(i,"c",c.c,110)}<td class="n">${fmt(num2(c.c)*(num2(c.q)||1))}<td><button class="g" data-a="delComp" data-id="${p.id}" data-i="${i}">Sil</button></tr>`).join("")}
-    <tr><td><input id="cn_${p.id}" placeholder="Yeni bileşen (örn. Ayak)"><td class="n"><input id="cq_${p.id}" value="1" inputmode="decimal" style="width:70px;text-align:right"><td><select id="cu_${p.id}">${UNITS.map(u=>`<option>${u}</option>`).join("")}</select><td class="n"><input id="cc_${p.id}" placeholder="TL / birim" inputmode="decimal" style="width:110px;text-align:right"><td><td><button class="b" data-a="addComp" data-id="${p.id}">Ekle</button></tr>
+    <table><tr><th>Bileşen<th class="n">Miktar<th>Birim<th class="n">Birim fiyat (TL / fiyat birimi)<th class="n">Tutar<th></tr>
+    ${(p.comps||[]).map((c,i)=>{const e=eff(c),f=conv(e.u,e.pu);return `<tr><td>${inp(i,"n",c.n)}<td class="n">${inp(i,"q",c.q,70)}<td>${sel(i,"u",e.u)}<td class="n">${e.m?`<b>${fmt(e.m.price)}</b>`:inp(i,"c",c.c,90)} / ${sel(i,"pu",e.pu,!!e.m)}<br>${msel(i,c.mid)}<td class="n">${isNaN(f)?'<span class="rd">birim uyumsuz</span>':fmt(lineCost(c))}<td><button class="g" data-a="delComp" data-id="${p.id}" data-i="${i}">Sil</button></tr>`}).join("")}
+    <tr><td><input id="cn_${p.id}" placeholder="Yeni bileşen (örn. Ayak)"><td class="n"><input id="cq_${p.id}" value="1" inputmode="decimal" style="width:70px;text-align:right"><td><select id="cu_${p.id}">${UNITS.map(u=>`<option>${u}</option>`).join("")}</select><td class="n"><input id="cc_${p.id}" placeholder="TL" inputmode="decimal" style="width:90px;text-align:right"> / <select id="cp_${p.id}">${UNITS.map(u=>`<option>${u}</option>`).join("")}</select><br><select id="cm_${p.id}"><option value="">Fiyat elle</option>${S.materials.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select><td><td><button class="b" data-a="addComp" data-id="${p.id}">Ekle</button></tr>
     <tr><td colspan="4"><b>Toplam maliyet</b><td class="n"><b>${fmt(cost)}</b><td></tr></table>
     <div class="row" style="margin-top:12px"><label>Kâr oranı (%)<input data-p="${p.id}" data-f="markup" value="${esc(p.markup)}" inputmode="decimal"></label>
     <label>KDV (%)<input data-p="${p.id}" data-f="kdv" value="${esc(p.kdv)}" inputmode="decimal"></label>
     <label>Satış fiyatı (KDV dahil)<input data-p="${p.id}" data-f="price" value="${esc(p.price||"")}" inputmode="decimal"></label></div>
     <p>KDV hariç satış: <b>${fmt(net)}</b> · KDV dahil önerilen: <b>${fmt(gross)}</b>${pr>0?` · Mevcut fiyatla kâr: <b class="${profit<0?"rd":"gr"}">${fmt(profit)}</b>${cost>0?` (%${(profit/cost*100).toFixed(1)})`:""}`:""}</p>
     <p><button class="b" data-a="applyPrice" data-id="${p.id}">Önerilen fiyatı uygula</button> <button class="g" data-a="del" data-c="products" data-id="${p.id}">Ürünü sil</button></p></div></details>`}).join("");
-  return `<div class="card"><h2>Yeni ürün</h2><div class="row"><label>Ürün adı<input id="pn" placeholder="örn. Natura lambader"></label><button class="b" data-a="addProd">Ürün ekle</button></div></div>${blocks||'<p class="mu">Henüz ürün yok.</p>'}`;
+  const matBlock=`<details data-m="mat" ${monthOpen.mat?"open":""}><summary><b>Malzeme fiyat kütüphanesi</b><span class="mu">${S.materials.length} kayıt</span></summary><div>
+  <table><tr><th>Malzeme<th class="n">Fiyat (TL)<th>Birim<th></tr>
+  ${[...S.materials].sort((a,b)=>(a.name||"").localeCompare(b.name||"")).map(m=>`<tr><td><input data-mt="${m.id}" data-f="name" value="${esc(m.name)}"><td class="n"><input data-mt="${m.id}" data-f="price" value="${esc(m.price)}" inputmode="decimal" style="width:110px;text-align:right"><td><select data-mt="${m.id}" data-f="unit">${UNITS.map(u=>`<option ${m.unit===u?"selected":""}>${u}</option>`).join("")}</select><td><button class="g" data-a="del" data-c="materials" data-id="${m.id}">Sil</button></tr>`).join("")}
+  <tr><td><input id="mt_n" placeholder="örn. ELAS PETG Siyah"><td class="n"><input id="mt_p" placeholder="TL" inputmode="decimal" style="width:110px;text-align:right"><td><select id="mt_u">${UNITS.map(u=>`<option ${u==="kg"?"selected":""}>${u}</option>`).join("")}</select><td><button class="b" data-a="addMat">Ekle</button></tr></table>
+  <p class="mu">Bir bileşende "Fiyat elle" yerine buradan malzeme seçersen fiyat otomatik gelir. Fiyatı burada güncelleyince bağlı tüm ürünlerin maliyeti yeni fiyata göre hesaplanır.</p></div></details>`;
+  return `<div class="card"><h2>Yeni ürün</h2><div class="row"><label>Ürün adı<input id="pn" placeholder="örn. Natura lambader"></label><button class="b" data-a="addProd">Ürün ekle</button></div></div>${matBlock}${blocks||'<p class="mu">Henüz ürün yok.</p>'}`;
 }
 const COPY='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 const CHK='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>';
@@ -268,8 +280,10 @@ const A={
     await addDoc(collection(db,"filaments"),{color:selC.name,hex:selC.hex,material:val("fm"),brand:val("fb")||"",remaining:num("fg"),logs:[]})},
   addProd:async()=>{const n=val("pn");if(!n)return alert("Ürün adı gir.");
     const r=await addDoc(collection(db,"products"),{name:n,comps:[],markup:30,kdv:20,price:0});monthOpen["p_"+r.id]=true;render()},
-  addComp:async d=>{const p=S.products.find(x=>x.id===d.id),n=val("cn_"+d.id);if(!n)return alert("Bileşen adı gir.");
-    await updateDoc(doc(db,"products",p.id),{comps:[...(p.comps||[]),{n,q:num2(val("cq_"+d.id))||1,u:val("cu_"+d.id)||"adet",c:num2(val("cc_"+d.id))}]})},
+  addComp:async d=>{const p=S.products.find(x=>x.id===d.id),m=S.materials.find(x=>x.id===val("cm_"+d.id)),n=val("cn_"+d.id)||m?.name;if(!n)return alert("Bileşen adı gir.");
+    const u=val("cu_"+d.id)||"adet",c=m?{n,q:num2(val("cq_"+d.id))||1,u,mid:m.id,c:m.price,pu:m.unit}:{n,q:num2(val("cq_"+d.id))||1,u,c:num2(val("cc_"+d.id)),pu:val("cp_"+d.id)||u};
+    await updateDoc(doc(db,"products",p.id),{comps:[...(p.comps||[]),c]})},
+  addMat:async()=>{const n=val("mt_n");if(!n)return alert("Malzeme adı gir.");await addDoc(collection(db,"materials"),{name:n,price:num("mt_p"),unit:val("mt_u")||"kg"});monthOpen.mat=true},
   delComp:async d=>{const p=S.products.find(x=>x.id===d.id);await updateDoc(doc(db,"products",p.id),{comps:(p.comps||[]).filter((_,i)=>i!==+d.i)})},
   applyPrice:async d=>{const p=S.products.find(x=>x.id===d.id);await updateDoc(doc(db,"products",p.id),{price:round(pcalc(p).gross)})},
   closeSt:async()=>{const T=num("st");if(T<=0)return alert("Ekstre tutarını gir.");
@@ -345,8 +359,13 @@ document.addEventListener("click",e=>{const t=e.target.closest("[data-a]");if(t&
 document.addEventListener("toggle",e=>{const m=e.target.dataset?.m;if(m!==undefined)monthOpen[m]=e.target.open},true);
 document.addEventListener("change",async e=>{
   const d=e.target.dataset;
+  if(e.target.id?.startsWith("cu_")){const q=document.getElementById("cp_"+e.target.id.slice(3));if(q)q.value=defPU(e.target.value)}
+  if(d.mt){try{await updateDoc(doc(db,"materials",d.mt),{[d.f]:d.f==="price"?num2(e.target.value):e.target.value.trim()})}catch(x){alert("Hata: "+(x.code||x))}return}
   if(d.p){const p=S.products.find(x=>x.id===d.p);if(!p)return;
-    try{if(d.i!==undefined){const a=(p.comps||[]).map(c=>({...c}));a[+d.i][d.f]=d.f==="n"||d.f==="u"?e.target.value.trim():num2(e.target.value);await updateDoc(doc(db,"products",p.id),{comps:a})}
+    try{if(d.i!==undefined){const a=(p.comps||[]).map(c=>({...c}));const it=a[+d.i],v=e.target.value.trim();
+      if(d.f==="u"&&(!it.pu||it.pu===(it.u||"adet")))it.pu=defPU(v);
+      if(d.f==="mid"){const m=S.materials.find(x=>x.id===v);it.mid=v||null;if(m){it.c=m.price;it.pu=m.unit}}
+      else it[d.f]=["n","u","pu"].includes(d.f)?v:num2(v);await updateDoc(doc(db,"products",p.id),{comps:a})}
     else await updateDoc(doc(db,"products",p.id),{[d.f]:num2(e.target.value)})}catch(x){alert("Hata: "+(x.code||x))}return}
   if(e.target.id==="tm"){month=e.target.value;render()}
   if(e.target.id==="imp"){const f=e.target.files[0];if(!f)return;
