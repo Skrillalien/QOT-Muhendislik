@@ -79,8 +79,8 @@ prd:ic('<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'),
 cmp:ic('<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>'),
 bak:ic('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 20h16"/>')};
 const lib=()=>[...DEF,...S.colors];
-let tab="kasa",month=new Date().toISOString().slice(0,7),started=false;
-const TABS={kasa:"Kasa",exp:"Gelir / Gider",pln:"Gelecek ödemeler",fil:"Filament",prd:"Ürünler",cmp:"Şirket",set:"Ayarlar",bak:"Yedek"};
+let tab="cmp",month=new Date().toISOString().slice(0,7),started=false;
+const TABS={cmp:"Şirket",kasa:"Kasa",exp:"Gelir / Gider",pln:"Gelecek ödemeler",fil:"Filament",prd:"Ürünler",set:"Ayarlar",bak:"Yedek"};
 const $=s=>document.querySelector(s),today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
 const fmt=n=>new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY"}).format(n||0);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -231,6 +231,7 @@ const COPY='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor
 const CHK='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>';
 const CF=[["Şirket bilgileri",[["name","Şirket adı"],["mersis","Mersis no"],["vkn","Vergi kimlik no"],["sicil","Sicil no"],["vd","Vergi dairesi"],["iban","IBAN"]]],
 ["Portal ve imza",[["eimza","E-imza şifre",1],["earsiv","E-Arşiv portal kullanıcı"],["earsivs","E-Arşiv portal şifre",1]]],
+["Banka ve kredi",[["kredis","Kredi şifresi",1],["bankas","Banka şifresi",1]]],
 ...P.map(p=>["Ortak: "+p,[["tc_"+p,"TC kimlik no"],["tel_"+p,"Telefon"],["dg_"+p,"Doğum tarihi"]]])];
 const cd=()=>S.company.find(x=>x.id==="info")||{};
 const cv=k=>cd().f?.[k]||"";
